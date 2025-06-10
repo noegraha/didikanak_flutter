@@ -1,16 +1,12 @@
-// pubspec.yaml dependencies yang diperlukan:
-// dependencies:
-//   flutter:
-//     sdk: flutter
-//   http: ^1.1.0
-//   intl: ^0.19.0
-
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load();
   runApp(
     MaterialApp(
       title: 'Deteksi Dini Kanker Anak',
@@ -21,6 +17,8 @@ void main() {
 }
 
 class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
   @override
   _SplashScreenState createState() => _SplashScreenState();
 }
@@ -29,7 +27,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 2), () {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => IndikatorKankerAnak()),
       );
@@ -45,8 +43,8 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Image.asset('assets/logo.jpeg', height: 100),
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'Deteksi Dini Kanker Anak',
               style: TextStyle(
                 fontSize: 20,
@@ -54,8 +52,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.blue,
               ),
             ),
-            SizedBox(height: 10),
-            CircularProgressIndicator(),
+            const SizedBox(height: 10),
+            const CircularProgressIndicator(),
           ],
         ),
       ),
@@ -84,6 +82,8 @@ class HasilSkrining {
 }
 
 class IndikatorKankerAnak extends StatefulWidget {
+  const IndikatorKankerAnak({super.key});
+
   @override
   _IndikatorKankerAnakState createState() => _IndikatorKankerAnakState();
 }
@@ -140,7 +140,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       id: 8,
       highlight: "Pembesaran kelenjar getah bening",
       rest:
-          "dengan ukuran 2 – 5 cm, keras, tidak nyeri, dan berlangsung ≥ 4 minggu",
+          " dengan ukuran 2 – 5 cm, keras, tidak nyeri, dan berlangsung ≥ 4 minggu",
     ),
     Indikator(
       id: 9,
@@ -156,7 +156,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
     Indikator(
       id: 11,
       highlight: "Benjolan",
-      rest: "yang teraba di perut atau bagian tubuh lain",
+      rest: " yang teraba di perut atau bagian tubuh lain",
     ),
   ];
 
@@ -182,22 +182,23 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         .any((entry) => entry.value == "ya");
     final isAllTidak = jawaban.values.every((v) => v == "tidak");
 
+    String hasilStatus = "";
     if (isLimaYa && !selainLimaYa) {
-      // Hanya indikator ke-5 yang "ya"
       hasil = HasilSkrining(
         warna: Colors.orange,
         status: "KUNING : Memiliki risiko terkena kanker",
         message:
             "Rujuk ke dokter anak untuk menentukan diagnosis penyakit dan tatalaksana yang tepat.",
       );
+      hasilStatus = "KUNING";
     } else if (selainLimaYa || (isLimaYa && selainLimaYa)) {
-      // Ada indikator lain yang "ya"
       hasil = HasilSkrining(
         warna: Colors.red,
         status: "MERAH : Kemungkinan terkena kanker atau penyakit berat",
         message:
             "Stabilisasi dan rujuk segera ke RS yang memiliki pelayanan hematologi dan onkologi anak.",
       );
+      hasilStatus = "MERAH";
     } else if (isAllTidak) {
       hasil = HasilSkrining(
         warna: Colors.green,
@@ -205,7 +206,16 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         message:
             "Pastikan pertumbuhan dan perkembangan anak sesuai usia, imunisasi lengkap, dan lakukan edukasi untuk pencegahan kanker.",
       );
+      hasilStatus = "HIJAU";
     }
+
+    // Mapping agar mirip React: { 'indikator_1': 'ya', ... }
+    Map<String, String?> mappedData = {
+      for (var entry in jawaban.entries) 'indikator_${entry.key}': entry.value,
+    };
+
+    // Kirim ke backend
+    await kirimHasilKeBackend(data: mappedData, hasil: hasilStatus);
 
     setState(() => isLoading = false);
 
@@ -213,10 +223,59 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     });
+  }
+
+  Future<void> kirimHasilKeBackend({
+    required Map<String, String?> data,
+    required String hasil,
+  }) async {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final tanggalWIB = DateFormat('yyyy-MM-dd HH:mm:ss').format(now);
+
+    final backendUrl = dotenv.env['DB_URL_SIMPAN'];
+    if (backendUrl == null || backendUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URL backend tidak ditemukan di .env')),
+      );
+      return;
+    }
+
+    final url = Uri.parse(backendUrl);
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'data': data,
+          'hasil': hasil,
+          'tanggal': tanggalWIB,
+        }),
+      );
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Success!'), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal mengakses: ${response.body}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Terdapat error pada backend: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void handleReset() {
@@ -228,8 +287,8 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
 
   Widget buildIndikatorCard(Indikator indikator) {
     return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -238,7 +297,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
           BoxShadow(
             color: Colors.black.withOpacity(0.03),
             blurRadius: 4,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -247,7 +306,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         children: [
           RichText(
             text: TextSpan(
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.black87,
                 fontSize: 14,
                 height: 1.4,
@@ -257,13 +316,13 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                 if (indikator.highlight.isNotEmpty)
                   TextSpan(
                     text: indikator.highlight,
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 TextSpan(text: indikator.rest),
               ],
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Row(
             children: [
               Radio<String>(
@@ -273,8 +332,8 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                     setState(() => jawaban[indikator.id] = value),
                 activeColor: Colors.blue,
               ),
-              Text("Ya", style: TextStyle(fontSize: 14)),
-              SizedBox(width: 32),
+              const Text("Ya", style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 32),
               Radio<String>(
                 value: "tidak",
                 groupValue: jawaban[indikator.id],
@@ -282,12 +341,12 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                     setState(() => jawaban[indikator.id] = value),
                 activeColor: Colors.blue,
               ),
-              Text("Tidak", style: TextStyle(fontSize: 14)),
+              const Text("Tidak", style: TextStyle(fontSize: 14)),
             ],
           ),
           if (jawaban[indikator.id] == null)
             Padding(
-              padding: EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(top: 8),
               child: Text(
                 "Mohon pilih salah satu",
                 style: TextStyle(color: Colors.red.shade600, fontSize: 12),
@@ -299,7 +358,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
   }
 
   Widget buildHasilSkriningCard() {
-    if (hasil == null) return SizedBox.shrink();
+    if (hasil == null) return const SizedBox.shrink();
     return Card(
       color: hasil!.warna.withOpacity(0.1),
       shape: RoundedRectangleBorder(
@@ -307,7 +366,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         side: BorderSide(color: hasil!.warna, width: 1.5),
       ),
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -322,13 +381,16 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                   color: hasil!.warna,
                   size: 24,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Expanded(
                   child: RichText(
                     text: TextSpan(
-                      style: TextStyle(color: Colors.black87, fontSize: 16),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 16,
+                      ),
                       children: [
-                        TextSpan(text: "Hasil Skrining: "),
+                        const TextSpan(text: "Hasil Skrining: "),
                         TextSpan(
                           text: hasil!.status.split(":")[0],
                           style: TextStyle(
@@ -343,10 +405,10 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                 ),
               ],
             ),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             Text(
               hasil!.message,
-              style: TextStyle(fontSize: 14, color: Colors.black87),
+              style: const TextStyle(fontSize: 14, color: Colors.black87),
             ),
           ],
         ),
@@ -356,10 +418,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
 
   @override
   Widget build(BuildContext context) {
-    // Hitung tinggi footer secara dinamis
-    double footerHeight = 80; // Tinggi dasar tombol
+    double footerHeight = 80;
     if (hasil != null) {
-      footerHeight += 120; // Tambahan tinggi untuk hasil
+      footerHeight += 120;
     }
 
     return Scaffold(
@@ -368,7 +429,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         children: [
           // Background image
           Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               image: DecorationImage(
                 image: AssetImage('assets/blur.jpg'),
                 fit: BoxFit.cover,
@@ -378,7 +439,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
           // Main content wrapped in card
           SafeArea(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Card(
                 elevation: 8,
                 shape: RoundedRectangleBorder(
@@ -388,8 +449,8 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                   children: [
                     // Header with logo
                     Container(
-                      padding: EdgeInsets.all(20),
-                      decoration: BoxDecoration(
+                      padding: const EdgeInsets.all(20),
+                      decoration: const BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.only(
                           topLeft: Radius.circular(16),
@@ -398,33 +459,24 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                       ),
                       child: Column(
                         children: [
-                          Container(
+                          SizedBox(
                             width: double.infinity,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: Image.asset(
                                 'assets/logo.jpeg',
                                 fit: BoxFit.cover,
-                                height: 170, // sesuaikan tinggi sesuai desain
+                                height: 172,
                               ),
                             ),
                           ),
-                          // SizedBox(height: 12),
-                          // Text(
-                          //   "Deteksi Dini Kanker Anak",
-                          //   style: TextStyle(
-                          //     fontSize: 20,
-                          //     fontWeight: FontWeight.bold,
-                          //     color: Colors.blue,
-                          //   ),
-                          // ),
                         ],
                       ),
                     ),
                     // Form content
                     Expanded(
                       child: Container(
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.only(
                             bottomLeft: Radius.circular(16),
@@ -444,9 +496,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                SizedBox(height: 16),
+                                const SizedBox(height: 16),
                                 Container(
-                                  padding: EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     color: Colors.blue.shade50,
                                     borderRadius: BorderRadius.circular(12),
@@ -454,7 +506,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                       color: Colors.blue.shade100,
                                     ),
                                   ),
-                                  child: Column(
+                                  child: const Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
@@ -475,8 +527,8 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                     ],
                                   ),
                                 ),
-                                SizedBox(height: 24),
-                                Text(
+                                const SizedBox(height: 24),
+                                const Text(
                                   "Anamnesis",
                                   style: TextStyle(
                                     fontSize: 18,
@@ -484,10 +536,10 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                     color: Colors.green,
                                   ),
                                 ),
-                                SizedBox(height: 8),
-                                ...anamnesis.map(buildIndikatorCard).toList(),
-                                SizedBox(height: 24),
-                                Text(
+                                const SizedBox(height: 8),
+                                ...anamnesis.map(buildIndikatorCard),
+                                const SizedBox(height: 24),
+                                const Text(
                                   "Periksa & Identifikasi",
                                   style: TextStyle(
                                     fontSize: 18,
@@ -495,11 +547,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                     color: Colors.orange,
                                   ),
                                 ),
-                                SizedBox(height: 8),
-                                ...identifikasi
-                                    .map(buildIndikatorCard)
-                                    .toList(),
-                                SizedBox(height: 32),
+                                const SizedBox(height: 8),
+                                ...identifikasi.map(buildIndikatorCard),
+                                const SizedBox(height: 32),
                               ],
                             ),
                           ),
@@ -511,81 +561,83 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
               ),
             ),
           ),
-          // Fixed bottom buttons dengan tinggi dinamis
+          // Fixed bottom buttons
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
-            child: Container(
-              margin: EdgeInsets.all(16),
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      ElevatedButton(
-                        onPressed: handleReset,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.grey.shade600,
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text("Reset"),
-                      ),
-                      ElevatedButton(
-                        onPressed: isFormComplete && !isLoading
-                            ? handleSubmit
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: isLoading
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : Text("Hitung Klasifikasi"),
-                      ),
-                    ],
-                  ),
-                  if (hasil != null) ...[
-                    SizedBox(height: 16),
-                    buildHasilSkriningCard(),
+            child: SafeArea(
+              child: Container(
+                margin: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
+                    ),
                   ],
-                ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ElevatedButton(
+                          onPressed: handleReset,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text("Reset"),
+                        ),
+                        ElevatedButton(
+                          onPressed: isFormComplete && !isLoading
+                              ? handleSubmit
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: isLoading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : const Text("Hitung Klasifikasi"),
+                        ),
+                      ],
+                    ),
+                    if (hasil != null) ...[
+                      const SizedBox(height: 16),
+                      buildHasilSkriningCard(),
+                    ],
+                  ],
+                ),
               ),
             ),
           ),
