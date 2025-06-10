@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,8 +17,6 @@ Future<void> main() async {
 }
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
   @override
   _SplashScreenState createState() => _SplashScreenState();
 }
@@ -42,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Image.asset('assets/logo.jpeg', height: 100),
+            Image.asset('assets/logo.jpeg', height: 110),
             const SizedBox(height: 20),
             const Text(
               'Deteksi Dini Kanker Anak',
@@ -82,8 +80,6 @@ class HasilSkrining {
 }
 
 class IndikatorKankerAnak extends StatefulWidget {
-  const IndikatorKankerAnak({super.key});
-
   @override
   _IndikatorKankerAnakState createState() => _IndikatorKankerAnakState();
 }
@@ -151,7 +147,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
     Indikator(
       id: 10,
       highlight: "Organomegali",
-      rest: ": Pembesaran hepar (hepatomegali) dan/atau limpa (splenomegali)",
+      rest: " : Pembesaran hepar (hepatomegali) dan/atau limpa (splenomegali)",
     ),
     Indikator(
       id: 11,
@@ -263,7 +259,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal mengakses: ${response.body}'),
+            content: Text('Terdapat kesalahan: ${response.body}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -271,7 +267,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Terdapat error pada backend: $e'),
+          content: Text('Error saat mengakses backend: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -283,6 +279,48 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       jawaban.clear();
       hasil = null;
     });
+  }
+
+  Widget buildPilihanChip(int indikatorId) {
+    return Row(
+      children: [
+        ChoiceChip(
+          label: Text('Ya'),
+          selected: jawaban[indikatorId] == 'ya',
+          onSelected: (selected) {
+            setState(() {
+              jawaban[indikatorId] = 'ya';
+            });
+          },
+          selectedColor: Colors.blue,
+          backgroundColor: Colors.grey.shade200,
+          labelStyle: TextStyle(
+            color: jawaban[indikatorId] == 'ya' ? Colors.white : Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        ),
+        SizedBox(width: 16),
+        ChoiceChip(
+          label: Text('Tidak'),
+          selected: jawaban[indikatorId] == 'tidak',
+          onSelected: (selected) {
+            setState(() {
+              jawaban[indikatorId] = 'tidak';
+            });
+          },
+          selectedColor: Colors.green,
+          backgroundColor: Colors.grey.shade200,
+          labelStyle: TextStyle(
+            color: jawaban[indikatorId] == 'tidak'
+                ? Colors.white
+                : Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+        ),
+      ],
+    );
   }
 
   Widget buildIndikatorCard(Indikator indikator) {
@@ -323,27 +361,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Radio<String>(
-                value: "ya",
-                groupValue: jawaban[indikator.id],
-                onChanged: (value) =>
-                    setState(() => jawaban[indikator.id] = value),
-                activeColor: Colors.blue,
-              ),
-              const Text("Ya", style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 32),
-              Radio<String>(
-                value: "tidak",
-                groupValue: jawaban[indikator.id],
-                onChanged: (value) =>
-                    setState(() => jawaban[indikator.id] = value),
-                activeColor: Colors.blue,
-              ),
-              const Text("Tidak", style: TextStyle(fontSize: 14)),
-            ],
-          ),
+          buildPilihanChip(indikator.id),
           if (jawaban[indikator.id] == null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -466,7 +484,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                               child: Image.asset(
                                 'assets/logo.jpeg',
                                 fit: BoxFit.cover,
-                                height: 172,
+                                height: 173,
                               ),
                             ),
                           ),
@@ -537,7 +555,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                ...anamnesis.map(buildIndikatorCard),
+                                ...anamnesis.map(buildIndikatorCard).toList(),
                                 const SizedBox(height: 24),
                                 const Text(
                                   "Periksa & Identifikasi",
@@ -548,7 +566,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                ...identifikasi.map(buildIndikatorCard),
+                                ...identifikasi
+                                    .map(buildIndikatorCard)
+                                    .toList(),
                                 const SizedBox(height: 32),
                               ],
                             ),
@@ -567,9 +587,12 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
             left: 0,
             right: 0,
             child: SafeArea(
+              top: false,
+              left: false,
+              right: false,
               child: Container(
                 margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
