@@ -179,8 +179,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
     final isAllTidak = jawaban.values.every((v) => v == "tidak");
 
     String hasilStatus = "";
+    HasilSkrining? hasilBaru;
     if (isLimaYa && !selainLimaYa) {
-      hasil = HasilSkrining(
+      hasilBaru = HasilSkrining(
         warna: Colors.orange,
         status: "KUNING : Memiliki risiko terkena kanker",
         message:
@@ -188,7 +189,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       );
       hasilStatus = "KUNING";
     } else if (selainLimaYa || (isLimaYa && selainLimaYa)) {
-      hasil = HasilSkrining(
+      hasilBaru = HasilSkrining(
         warna: Colors.red,
         status: "MERAH : Kemungkinan terkena kanker atau penyakit berat",
         message:
@@ -196,7 +197,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       );
       hasilStatus = "MERAH";
     } else if (isAllTidak) {
-      hasil = HasilSkrining(
+      hasilBaru = HasilSkrining(
         warna: Colors.green,
         status: "HIJAU : Tidak memiliki risiko terkena kanker",
         message:
@@ -210,22 +211,30 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       for (var entry in jawaban.entries) 'indikator_${entry.key}': entry.value,
     };
 
-    // Kirim ke backend
-    await kirimHasilKeBackend(data: mappedData, hasil: hasilStatus);
+    // Kirim ke backend, dan hanya tampilkan hasil jika berhasil
+    bool success = await kirimHasilKeBackend(
+      data: mappedData,
+      hasil: hasilStatus,
+    );
 
-    setState(() => isLoading = false);
-
-    // Auto scroll ke bawah setelah hasil muncul
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+    setState(() {
+      isLoading = false;
+      hasil = success ? hasilBaru : null; // Hanya tampil jika sukses
     });
+
+    // Auto scroll ke bawah jika berhasil
+    if (success) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      });
+    }
   }
 
-  Future<void> kirimHasilKeBackend({
+  Future<bool> kirimHasilKeBackend({
     required Map<String, String?> data,
     required String hasil,
   }) async {
@@ -237,7 +246,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('URL backend tidak ditemukan di .env')),
       );
-      return;
+      return false;
     }
 
     final url = Uri.parse(backendUrl);
@@ -256,21 +265,24 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Success!'), backgroundColor: Colors.green),
         );
+        return true;
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Terdapat kesalahan: ${response.body}'),
+            content: Text('Terdapat kesalahan data: ${response.body}'),
             backgroundColor: Colors.red,
           ),
         );
+        return false;
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saat mengakses backend: $e'),
+          content: Text('Error mengakses backend: $e'),
           backgroundColor: Colors.red,
         ),
       );
+      return false;
     }
   }
 
@@ -326,7 +338,7 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
   Widget buildIndikatorCard(Indikator indikator) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
@@ -482,9 +494,9 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: Image.asset(
-                                'assets/logo.jpeg',
+                                'assets/logo.png',
                                 fit: BoxFit.cover,
-                                height: 173,
+                                height: 150,
                               ),
                             ),
                           ),
@@ -514,9 +526,8 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const SizedBox(height: 16),
                                 Container(
-                                  padding: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: Colors.blue.shade50,
                                     borderRadius: BorderRadius.circular(12),
@@ -530,46 +541,73 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                     children: [
                                       Text(
                                         "• Setiap kali anak mengunjungi layanan kesehatan karena sebab apapun, kita harus menilai kemungkinan bahwa anak tersebut berisiko terkena kanker",
-                                        style: TextStyle(fontSize: 14),
+                                        style: TextStyle(fontSize: 12),
                                       ),
                                       SizedBox(height: 8),
                                       Text(
                                         "• Lakukan langkah-langkah deteksi dini kanker pada anak: Anamnesis - Periksa & Identifikasi - Klasifikasi",
-                                        style: TextStyle(fontSize: 14),
+                                        style: TextStyle(fontSize: 12),
                                       ),
                                       SizedBox(height: 8),
                                       Text(
                                         "• Skrining ini bertujuan untuk memastikan bahwa diagnosis dan pengobatan bagi anak yang terkena kanker tidak tertunda",
-                                        style: TextStyle(fontSize: 14),
+                                        style: TextStyle(fontSize: 12),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 24),
-                                const Text(
-                                  "Anamnesis",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.symmetric(vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFFD9F7BE), // hijau muda
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      "Anamnesis",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 ...anamnesis.map(buildIndikatorCard).toList(),
-                                const SizedBox(height: 24),
-                                const Text(
-                                  "Periksa & Identifikasi",
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
+                                const SizedBox(height: 6),
+                                Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.symmetric(vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Color.fromARGB(
+                                      255,
+                                      247,
+                                      229,
+                                      190,
+                                    ), // hijau muda
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      "Periksa & Identifikasi",
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 ...identifikasi
                                     .map(buildIndikatorCard)
                                     .toList(),
-                                const SizedBox(height: 32),
+                                const SizedBox(height: 8),
                               ],
                             ),
                           ),
