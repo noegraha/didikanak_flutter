@@ -610,6 +610,18 @@ class _IndikatorKankerAnakState extends State<IndikatorKankerAnak> {
                                     .map(buildIndikatorCard)
                                     .toList(),
                                 const SizedBox(height: 8),
+                                Center(
+                                  child: Text(
+                                    '*Pan American Health Organization, World Health Organization (2014): Early diagnosis of childhood cancer.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Color(0xFF888888),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
                               ],
                             ),
                           ),
